@@ -11,13 +11,13 @@ pub type MyDialogue = Dialogue<State, InMemStorage<State>>;
 pub type HandlerResult = Result<(), Box<dyn Error + Send + Sync>>;
 
 #[derive(BotCommands, Clone)]
-#[command(rename_rule = "lowercase", description = "These commands are supported:")]
+#[command(rename_rule = "lowercase", description = "Поддерживаемые команды / Қолдау көрсетілетін пәрмендер:")]
 pub enum Command {
-    #[command(description = "display introduction message")]
+    #[command(description = "показать приветствие / сәлемдесуді көрсету")]
     Start,
-    #[command(description = "ask a new question")]
+    #[command(description = "задать вопрос / сұрақ қою")]
     AskQuestion,
-    #[command(description = "cancel the process")]
+    #[command(description = "отменить процесс / процесті болдырмау")]
     Cancel,
 }
 
@@ -59,30 +59,36 @@ async fn start(bot: Bot, dialogue: MyDialogue, msg: Message) -> HandlerResult {
     // Reset state just in case
     dialogue.exit().await?;
     
-    let intro = "👋 Hello! I am the Support Proxy Bot.\n\n\
-                 I can help you get directly in touch with our site administrators. \
-                 If you have any inquiries, suggestions, or issues, I will collect your contact details \
-                 and forward your message securely to the team.\n\n\
-                 To begin submitting a request, please use the /askquestion command.";
+    let intro = "👋 Здравствуйте! Я бот службы поддержки.\n\n\
+                 Я помогу вам связаться с администраторами сайта. \
+                 Если у вас есть вопросы, предложения или проблемы, я соберу ваши контактные данные \
+                 и безопасно передам ваше сообщение команде.\n\n\
+                 Чтобы начать и отправить запрос, пожалуйста, используйте команду /askquestion.\n\n\
+                 ---\n\n\
+                 👋 Сәлеметсіз бе! Мен қолдау қызметінің ботымын.\n\n\
+                 Мен сізге сайт әкімшілерімен байланысуға көмектесемін. \
+                 Егер сізде сұрақтар, ұсыныстар немесе мәселелер болса, мен сіздің байланыс деректеріңізді жинап, \
+                 хабарламаңызды командаға қауіпсіз түрде жеткіземін.\n\n\
+                 Сұранымды бастау және жіберу үшін /askquestion пәрменін пайдаланыңыз.";
                  
     bot.send_message(msg.chat.id, intro).await?;
     Ok(())
 }
 
 async fn ask_question(bot: Bot, dialogue: MyDialogue, msg: Message) -> HandlerResult {
-    bot.send_message(msg.chat.id, "Let's get your contact request started.\n\nPlease enter your Full Name:")
+    bot.send_message(msg.chat.id, "Давайте начнем. Пожалуйста, введите ваше полное имя (ФИО):\n\nБастайық. Толық аты-жөніңізді енгізіңіз:")
         .await?;
     dialogue.update(State::ReceiveFullName).await?;
     Ok(())
 }
 
 async fn unrecognized_in_start(bot: Bot, msg: Message) -> HandlerResult {
-    bot.send_message(msg.chat.id, "To submit a request, please use the /askquestion command.").await?;
+    bot.send_message(msg.chat.id, "Чтобы отправить запрос, пожалуйста, используйте команду /askquestion.\n\nСұраным жіберу үшін /askquestion пәрменін пайдаланыңыз.").await?;
     Ok(())
 }
 
 async fn cancel(bot: Bot, dialogue: MyDialogue, msg: Message) -> HandlerResult {
-    bot.send_message(msg.chat.id, "Process cancelled. You can type /start to begin again.").await?;
+    bot.send_message(msg.chat.id, "Процесс отменен. Вы можете ввести /start, чтобы начать заново.\n\nПроцесс тоқтатылды. Қайта бастау үшін /start теріңіз.").await?;
     dialogue.exit().await?;
     Ok(())
 }
@@ -90,13 +96,13 @@ async fn cancel(bot: Bot, dialogue: MyDialogue, msg: Message) -> HandlerResult {
 async fn receive_full_name(bot: Bot, dialogue: MyDialogue, msg: Message) -> HandlerResult {
     match msg.text() {
         Some(text) => {
-            bot.send_message(msg.chat.id, "Please enter your Project Name:").await?;
+            bot.send_message(msg.chat.id, "Пожалуйста, введите название вашего проекта:\n\nЖобаңыздың атауын енгізіңіз:").await?;
             let mut form = FormState::default();
             form.full_name = text.into();
             dialogue.update(State::ReceiveProjectName(form)).await?;
         }
         None => {
-            bot.send_message(msg.chat.id, "Please send text.").await?;
+            bot.send_message(msg.chat.id, "Пожалуйста, отправьте текстовое сообщение.\n\nМәтіндік хабарлама жіберіңіз.").await?;
         }
     }
     Ok(())
@@ -110,12 +116,12 @@ async fn receive_project_name(
 ) -> HandlerResult {
     match msg.text() {
         Some(text) => {
-            bot.send_message(msg.chat.id, "Please enter your Contact Info (Email and/or Phone number):").await?;
+            bot.send_message(msg.chat.id, "Пожалуйста, введите ваши контактные данные (Email и/или номер телефона):\n\nБайланыс деректеріңізді енгізіңіз (Email және/немесе телефон нөмірі):").await?;
             form.project_name = text.into();
             dialogue.update(State::ReceiveContactInfo(form)).await?;
         }
         None => {
-            bot.send_message(msg.chat.id, "Please send text.").await?;
+            bot.send_message(msg.chat.id, "Пожалуйста, отправьте текстовое сообщение.\n\nМәтіндік хабарлама жіберіңіз.").await?;
         }
     }
     Ok(())
@@ -129,12 +135,12 @@ async fn receive_contact_info(
 ) -> HandlerResult {
     match msg.text() {
         Some(text) => {
-            bot.send_message(msg.chat.id, "Finally, what is your question or message?").await?;
+            bot.send_message(msg.chat.id, "И наконец, каков ваш вопрос или сообщение?\n\nЖәне соңында, сіздің сұрағыңыз немесе хабарламаңыз қандай?").await?;
             form.contact_info = text.into();
             dialogue.update(State::ReceiveQuestion(form)).await?;
         }
         None => {
-            bot.send_message(msg.chat.id, "Please send text.").await?;
+            bot.send_message(msg.chat.id, "Пожалуйста, отправьте текстовое сообщение.\n\nМәтіндік хабарлама жіберіңіз.").await?;
         }
     }
     Ok(())
@@ -149,16 +155,16 @@ async fn receive_question(
 ) -> HandlerResult {
     match msg.text() {
         Some(question) => {
-            bot.send_message(msg.chat.id, "Thank you! We have received your request and our admins will get back to you here shortly.").await?;
+            bot.send_message(msg.chat.id, "Спасибо! Мы получили ваш запрос, и наши администраторы скоро ответят вам здесь.\n\nРахмет! Біз сіздің сұранымыңызды алдық, және біздің әкімшілер жақында осында жауап береді.").await?;
             
             // Format the ticket
             let ticket = format!(
-                "🚨 **New Support Request**\n\
+                "🚨 **Новый запрос в поддержку**\n\
                  **ID:** {}\n\
-                 **Name:** {}\n\
-                 **Project:** {}\n\
-                 **Contact:** {}\n\
-                 **Question:** {}",
+                 **Имя:** {}\n\
+                 **Проект:** {}\n\
+                 **Контакты:** {}\n\
+                 **Вопрос:** {}",
                 msg.chat.id, form.full_name, form.project_name, form.contact_info, question
             );
             
@@ -168,7 +174,7 @@ async fn receive_question(
             dialogue.exit().await?;
         }
         None => {
-            bot.send_message(msg.chat.id, "Please send text.").await?;
+            bot.send_message(msg.chat.id, "Пожалуйста, отправьте текстовое сообщение.\n\nМәтіндік хабарлама жіберіңіз.").await?;
         }
     }
     Ok(())
@@ -184,14 +190,14 @@ async fn admin_reply_handler(bot: Bot, msg: Message) -> HandlerResult {
                 if let Ok(user_id) = id_str.parse::<i64>() {
                     let user_chat_id = ChatId(user_id);
                     if let Some(admin_reply_text) = msg.text() {
-                        let final_message = format!("🧑‍💻 **Support Team Reply:**\n\n{}", admin_reply_text);
+                        let final_message = format!("🧑‍💻 **Ответ службы поддержки / Қолдау қызметінің жауабы:**\n\n{}", admin_reply_text);
                         // Send the reply back to the user
                         if let Err(e) = bot.send_message(user_chat_id, final_message).await {
                             log::error!("Failed to send reply to user {}: {}", user_id, e);
-                            bot.send_message(msg.chat.id, format!("Failed to deliver message to user: {}", e)).await?;
+                            bot.send_message(msg.chat.id, format!("❌ Ошибка при отправке пользователю: {}", e)).await?;
                         } else {
                             // React or confirm success
-                            bot.send_message(msg.chat.id, "✅ Reply sent successfully.").await?;
+                            bot.send_message(msg.chat.id, "✅ Ответ успешно отправлен.").await?;
                         }
                     }
                 }
