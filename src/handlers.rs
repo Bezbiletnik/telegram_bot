@@ -13,8 +13,10 @@ pub type HandlerResult = Result<(), Box<dyn Error + Send + Sync>>;
 #[derive(BotCommands, Clone)]
 #[command(rename_rule = "lowercase", description = "These commands are supported:")]
 pub enum Command {
-    #[command(description = "start the process")]
+    #[command(description = "display introduction message")]
     Start,
+    #[command(description = "ask a new question")]
+    AskQuestion,
     #[command(description = "cancel the process")]
     Cancel,
 }
@@ -30,9 +32,10 @@ pub fn schema(admin_group_id: ChatId) -> UpdateHandler<Box<dyn Error + Send + Sy
             dptree::entry()
                 .filter_command::<Command>()
                 .branch(case![Command::Start].endpoint(start))
+                .branch(case![Command::AskQuestion].endpoint(ask_question))
                 .branch(case![Command::Cancel].endpoint(cancel))
         )
-        .branch(case![State::Start].endpoint(start))
+        .branch(case![State::Start].endpoint(unrecognized_in_start))
         .branch(case![State::ReceiveFullName].endpoint(receive_full_name))
         .branch(case![State::ReceiveProjectName(form)].endpoint(receive_project_name))
         .branch(case![State::ReceiveContactInfo(form)].endpoint(receive_contact_info))
@@ -53,9 +56,28 @@ pub fn schema(admin_group_id: ChatId) -> UpdateHandler<Box<dyn Error + Send + Sy
 }
 
 async fn start(bot: Bot, dialogue: MyDialogue, msg: Message) -> HandlerResult {
-    bot.send_message(msg.chat.id, "Welcome! Let's get your contact request started.\n\nPlease enter your Full Name:")
+    // Reset state just in case
+    dialogue.exit().await?;
+    
+    let intro = "👋 Hello! I am the Support Proxy Bot.\n\n\
+                 I can help you get directly in touch with our site administrators. \
+                 If you have any inquiries, suggestions, or issues, I will collect your contact details \
+                 and forward your message securely to the team.\n\n\
+                 To begin submitting a request, please use the /askquestion command.";
+                 
+    bot.send_message(msg.chat.id, intro).await?;
+    Ok(())
+}
+
+async fn ask_question(bot: Bot, dialogue: MyDialogue, msg: Message) -> HandlerResult {
+    bot.send_message(msg.chat.id, "Let's get your contact request started.\n\nPlease enter your Full Name:")
         .await?;
     dialogue.update(State::ReceiveFullName).await?;
+    Ok(())
+}
+
+async fn unrecognized_in_start(bot: Bot, msg: Message) -> HandlerResult {
+    bot.send_message(msg.chat.id, "To submit a request, please use the /askquestion command.").await?;
     Ok(())
 }
 
