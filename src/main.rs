@@ -23,11 +23,18 @@ async fn main() {
             .parse::<i64>()
             .expect("ADMIN_GROUP_ID must be a valid integer"),
     );
+    
+    let public_group_id_str = env::var("PUBLIC_GROUP_ID").expect("PUBLIC_GROUP_ID must be set");
+    let public_group_id = teloxide::types::ChatId(
+        public_group_id_str
+            .parse::<i64>()
+            .expect("PUBLIC_GROUP_ID must be a valid integer"),
+    );
 
     let bot = Bot::from_env();
 
     // Setup and start dispatcher
-    Dispatcher::builder(bot, handlers::schema(admin_group_id))
+    Dispatcher::builder(bot, handlers::schema(admin_group_id, public_group_id))
         .dependencies(dptree::deps![InMemStorage::<state::State>::new()])
         .enable_ctrlc_handler()
         .build()

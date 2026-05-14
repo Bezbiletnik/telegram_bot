@@ -2,6 +2,16 @@
 
 Deploying a Rust Telegram bot to a Google Cloud Platform (GCP) Virtual Machine ensures your bot runs 24/7. Here is the step-by-step guide to get it running robustly as a background service.
 
+## 0. Telegram Groups Configuration (Two-Group Architecture)
+
+Before deploying the bot, you need to set up the two groups required for the bot's workflow:
+
+1. **Admin Review Group (Private):** Create a new private group. Add your trusted administrators to this group. The bot will send all incoming user questions here for review.
+2. **Public Members Group (Public/Private):** This is where all regular users gather. Approved Q&As will be published here by the bot. 
+   - **Moderation:** Since users are allowed to chat here, it is highly recommended to add a popular moderation bot (e.g., @MissRose_bot, @GroupHelpBot) to this group. You can configure the moderation bot to enforce rate limits (e.g., max messages per minute) and enable language filters to prevent spam and toxicity.
+3. Add your newly created Rust Bot to *both* groups and ensure it has Admin permissions in both (so it can read messages and pin/delete if necessary).
+4. Obtain the Chat IDs for both groups (often starting with a minus sign, e.g., `-100123456789`). You can use bots like @RawDataBot or @getidsbot to find these IDs.
+
 ## 1. Create a Google Cloud VM
 
 1. Go to the [Google Cloud Console](https://console.cloud.google.com/).
@@ -54,6 +64,7 @@ The easiest way to get your code onto the VM is using Git.
    ```env
    TELOXIDE_TOKEN="your_token_here"
    ADMIN_GROUP_ID="-123456789"
+   PUBLIC_GROUP_ID="-100987654321"
    RUST_LOG=info
    ```
    *(Save and exit `nano` by pressing `Ctrl+O`, `Enter`, `Ctrl+X`)*.

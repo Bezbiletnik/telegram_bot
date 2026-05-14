@@ -2,7 +2,7 @@ use crate::state::{State, FormState};
 use teloxide::{
     dispatching::{dialogue::InMemStorage, UpdateHandler},
     prelude::*,
-    types::ChatId,
+    types::{ChatId, InlineKeyboardButton, InlineKeyboardMarkup},
     utils::command::BotCommands,
 };
 use std::error::Error;
@@ -21,7 +21,7 @@ pub enum Command {
     Cancel,
 }
 
-pub fn schema(admin_group_id: ChatId) -> UpdateHandler<Box<dyn Error + Send + Sync + 'static>> {
+pub fn schema(admin_group_id: ChatId, public_group_id: ChatId) -> UpdateHandler<Box<dyn Error + Send + Sync + 'static>> {
     use dptree::case;
 
     // The user flow is only for private chats
@@ -48,11 +48,15 @@ pub fn schema(admin_group_id: ChatId) -> UpdateHandler<Box<dyn Error + Send + Sy
     // Admin flow is only for the admin group
     let admin_flow = Update::filter_message()
         .filter(move |msg: Message| msg.chat.id == admin_group_id)
-        .endpoint(admin_reply_handler);
+        .endpoint(move |bot: Bot, msg: Message| admin_reply_handler(bot, msg, public_group_id));
+
+    let callback_flow = Update::filter_callback_query()
+        .endpoint(callback_handler);
 
     dptree::entry()
         .branch(user_flow)
         .branch(admin_flow)
+        .branch(callback_flow)
 }
 
 async fn start(bot: Bot, dialogue: MyDialogue, msg: Message) -> HandlerResult {
@@ -162,14 +166,19 @@ async fn receive_question(
                 "🚨 **Новый запрос в поддержку**\n\
                  **ID:** {}\n\
                  **Имя:** {}\n\
-                 **Проект:** {}\n\
                  **Контакты:** {}\n\
-                 **Вопрос:** {}",
-                msg.chat.id, form.full_name, form.project_name, form.contact_info, question
+                 ---\n\
+                 **Проект:** {}\n\
+                 **Вопрос:**\n{}",
+                msg.chat.id, form.full_name, form.contact_info, form.project_name, question
             );
             
+            let keyboard = InlineKeyboardMarkup::new(vec![
+                vec![InlineKeyboardButton::callback("❌ Отклонить (Некорректный вопрос)", format!("reject:{}", msg.chat.id))]
+            ]);
+            
             // Send to Admin Group
-            bot.send_message(admin_group_id, ticket).await?;
+            bot.send_message(admin_group_id, ticket).reply_markup(keyboard).await?;
             
             dialogue.exit().await?;
         }
@@ -180,7 +189,7 @@ async fn receive_question(
     Ok(())
 }
 
-async fn admin_reply_handler(bot: Bot, msg: Message) -> HandlerResult {
+async fn admin_reply_handler(bot: Bot, msg: Message, public_group_id: ChatId) -> HandlerResult {
     if let Some(reply_to) = msg.reply_to_message() {
         if let Some(text) = reply_to.text() {
             // Very simple parser to extract ID
@@ -196,13 +205,72 @@ async fn admin_reply_handler(bot: Bot, msg: Message) -> HandlerResult {
                             log::error!("Failed to send reply to user {}: {}", user_id, e);
                             bot.send_message(msg.chat.id, format!("❌ Ошибка при отправке пользователю: {}", e)).await?;
                         } else {
-                            // React or confirm success
-                            bot.send_message(msg.chat.id, "✅ Ответ успешно отправлен.").await?;
+                            // Extract project and question for public group
+                            let mut project_name = String::new();
+                            let mut question_text = String::new();
+                            let lines: Vec<&str> = text.lines().collect();
+                            let mut in_question = false;
+                            for line in &lines {
+                                if line.starts_with("**Проект:** ") {
+                                    project_name = line.trim_start_matches("**Проект:** ").to_string();
+                                } else if line.starts_with("**Вопрос:**") {
+                                    in_question = true;
+                                } else if in_question {
+                                    question_text.push_str(line);
+                                    question_text.push('\n');
+                                }
+                            }
+                            let question_text = question_text.trim();
+                            
+                            // Publish to public group
+                            if !project_name.is_empty() && !question_text.is_empty() {
+                                let public_msg = format!(
+                                    "📢 **Новый ответ на вопрос / Жаңа сұраққа жауап**\n\
+                                     **Проект / Жоба:** {}\n\n\
+                                     **Вопрос / Сұрақ:**\n{}\n\n\
+                                     **Ответ / Жауап:**\n{}",
+                                    project_name, question_text, admin_reply_text
+                                );
+                                if let Err(e) = bot.send_message(public_group_id, public_msg).await {
+                                    log::error!("Failed to send to public group: {}", e);
+                                    bot.send_message(msg.chat.id, format!("⚠️ Ответ отправлен пользователю, но ошибка при публикации: {}", e)).await?;
+                                } else {
+                                    bot.send_message(msg.chat.id, "✅ Ответ успешно отправлен пользователю и опубликован в публичной группе.").await?;
+                                }
+                            } else {
+                                bot.send_message(msg.chat.id, "✅ Ответ отправлен пользователю, но не удалось извлечь проект/вопрос для публикации.").await?;
+                            }
                         }
                     }
                 }
             }
         }
     }
+    Ok(())
+}
+
+async fn callback_handler(bot: Bot, q: CallbackQuery) -> HandlerResult {
+    if let Some(ref data) = q.data {
+        if data.starts_with("reject:") {
+            let id_str = data.trim_start_matches("reject:");
+            if let Ok(user_id) = id_str.parse::<i64>() {
+                let user_chat_id = ChatId(user_id);
+                
+                // Send rejection to user
+                let reject_msg = "Ваш вопрос был отклонен администратором как некорректный. Пожалуйста, сформулируйте вопрос точнее и отправьте снова с помощью /askquestion.\n\n\
+                                  Әкімші сұрағыңызды қате ретінде қабылдамады. Сұрағыңызды нақтылап, /askquestion арқылы қайта жіберіңіз.";
+                let _ = bot.send_message(user_chat_id, reject_msg).await;
+                
+                // Edit original message to show it was rejected
+                if let Some(message) = q.regular_message() {
+                    let old_text = message.text().unwrap_or("");
+                    let new_text = format!("{}\n\n❌ **ОТКЛОНЕН (Пользователь уведомлен)**", old_text);
+                    let _ = bot.edit_message_text(message.chat.id, message.id, new_text).await;
+                }
+            }
+        }
+    }
+    // Answer callback query so it stops spinning
+    bot.answer_callback_query(q.id).await?;
     Ok(())
 }
